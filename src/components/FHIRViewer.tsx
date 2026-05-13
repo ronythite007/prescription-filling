@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Code, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 interface FHIRViewerProps {
@@ -32,6 +33,10 @@ export function FHIRViewer({ fhirJson, isLoading }: FHIRViewerProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSendToEHR = () => {
+    toast.success("FHIR payload is ready to send to EHR");
+  };
+
   return (
     <div className="rounded-lg border bg-card p-5 shadow-card animate-fade-up">
       <div className="flex items-center justify-between mb-3">
@@ -47,6 +52,11 @@ export function FHIRViewer({ fhirJson, isLoading }: FHIRViewerProps) {
       <pre className="text-xs font-mono leading-relaxed p-4 rounded-md bg-foreground/[0.03] border overflow-x-auto max-h-80">
         {jsonString}
       </pre>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={handleSendToEHR} className="gap-2">
+          Send to EHR
+        </Button>
+      </div>
     </div>
   );
 }
