@@ -15,8 +15,6 @@ type NetlifyHandlerResponse = {
   body: string;
 };
 
-const DEFAULT_TOKEN_URL = "https://api.preview.platform.athenahealth.com/oauth2/v1/token";
-
 const runtimeEnv = (globalThis as typeof globalThis & {
   process?: {
     env?: Record<string, string | undefined>;
@@ -53,10 +51,10 @@ export async function handler(event: NetlifyHandlerEvent): Promise<NetlifyHandle
 
   const clientId = getEnvValue("ATHENA_CLIENT_ID", "VITE_ATHENA_CLIENT_ID");
   const clientSecret = getEnvValue("ATHENA_CLIENT_SECRET", "VITE_ATHENA_CLIENT_SECRET");
-  const tokenUrl = getEnvValue("ATHENA_TOKEN_URL", "VITE_ATHENA_TOKEN_URL") || DEFAULT_TOKEN_URL;
+  const tokenUrl = getEnvValue("ATHENA_TOKEN_URL", "VITE_ATHENA_TOKEN_URL");
   const tokenScope = getEnvValue("ATHENA_SCOPE", "VITE_ATHENA_SCOPE");
 
-  if (!clientId || !clientSecret) {
+  if (!clientId || !clientSecret || !tokenUrl) {
     return {
       statusCode: 500,
       headers,

@@ -125,12 +125,10 @@ class AthenaHealthAPI {
 
     const clientId = (import.meta.env.VITE_ATHENA_CLIENT_ID || "").trim();
     const clientSecret = (import.meta.env.VITE_ATHENA_CLIENT_SECRET || "").trim();
-    const tokenUrl =
-      (import.meta.env.VITE_ATHENA_TOKEN_URL ||
-      "https://api.preview.platform.athenahealth.com/oauth2/v1/token").trim();
+    const tokenUrl = (import.meta.env.VITE_ATHENA_TOKEN_URL || "").trim();
     const tokenScope = (import.meta.env.VITE_ATHENA_SCOPE || "").trim();
 
-    if (!clientId || !clientSecret) {
+    if (!clientId || !clientSecret || !tokenUrl) {
       throw new Error("Athena Health credentials not configured");
     }
 
