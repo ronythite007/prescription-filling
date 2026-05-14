@@ -60,34 +60,12 @@ function getAthenaMedicationSearchValue(medicationName: string): string {
 }
 
 class AthenaHealthAPI {
-  private clientId: string;
-  private clientSecret: string;
-  private tokenUrl: string;
   private baseUrl: string;
-  private practiceId: string;
-  private tokenScope: string;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
 
   constructor() {
-    this.clientId = (import.meta.env.VITE_ATHENA_CLIENT_ID || "").trim();
-    this.clientSecret = (import.meta.env.VITE_ATHENA_CLIENT_SECRET || "").trim();
-    this.tokenUrl =
-      (import.meta.env.VITE_ATHENA_TOKEN_URL ||
-      "https://api.preview.platform.athenahealth.com/oauth2/v1/token").trim();
     this.baseUrl = (import.meta.env.VITE_ATHENA_BASE_URL || "").trim();
-    this.practiceId = (import.meta.env.VITE_ATHENA_PRACTICE_ID || "").trim();
-    this.tokenScope = (import.meta.env.VITE_ATHENA_SCOPE || "").trim();
-
-    if (!this.clientId || !this.clientSecret) {
-      console.warn("Athena Health credentials not configured");
-    }
-
-    if (this.clientSecret === "put_your_client_secret_here") {
-      console.warn(
-        "Athena Health client secret is still a placeholder. Replace VITE_ATHENA_CLIENT_SECRET with a real value."
-      );
-    }
   }
 
   /**
@@ -132,6 +110,10 @@ class AthenaHealthAPI {
   }
 
   private async requestToken(mode: TokenRequestMode): Promise<TokenResponse> {
+    if (import.meta.env.PROD) {
+      return this.requestTokenViaProxy();
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
@@ -141,27 +123,38 @@ class AthenaHealthAPI {
       grant_type: "client_credentials",
     });
 
-    if (this.tokenScope) {
-      body.append("scope", this.tokenScope);
+    const clientId = (import.meta.env.VITE_ATHENA_CLIENT_ID || "").trim();
+    const clientSecret = (import.meta.env.VITE_ATHENA_CLIENT_SECRET || "").trim();
+    const tokenUrl =
+      (import.meta.env.VITE_ATHENA_TOKEN_URL ||
+      "https://api.preview.platform.athenahealth.com/oauth2/v1/token").trim();
+    const tokenScope = (import.meta.env.VITE_ATHENA_SCOPE || "").trim();
+
+    if (!clientId || !clientSecret) {
+      throw new Error("Athena Health credentials not configured");
+    }
+
+    if (tokenScope) {
+      body.append("scope", tokenScope);
     }
 
     if (mode === "basic-auth") {
       // Create Basic Auth header
-      const credentials = `${this.clientId}:${this.clientSecret}`;
+      const credentials = `${clientId}:${clientSecret}`;
       headers.Authorization = `Basic ${btoa(credentials)}`;
-      console.log(`[Athena Debug] Using Basic Auth mode - Client ID: ${this.clientId}`);
+      console.log(`[Athena Debug] Using Basic Auth mode - Client ID: ${clientId}`);
     } else {
-      body.append("client_id", this.clientId);
-      body.append("client_secret", this.clientSecret);
-      console.log(`[Athena Debug] Using Body Credentials mode - Client ID: ${this.clientId}`);
+      body.append("client_id", clientId);
+      body.append("client_secret", clientSecret);
+      console.log(`[Athena Debug] Using Body Credentials mode - Client ID: ${clientId}`);
     }
 
-    console.log(`[Athena Debug] Token URL: ${this.tokenUrl}`);
+    console.log(`[Athena Debug] Token URL: ${tokenUrl}`);
     console.log(`[Athena Debug] Request mode: ${mode}`);
     console.log(`[Athena Debug] Headers:`, JSON.stringify({...headers, Authorization: headers.Authorization ? "***" : undefined}));
     console.log(`[Athena Debug] Body params:`, body.toString().replace(/client_secret=[^&]+/, 'client_secret=***'));
 
-    const response = await fetch(this.tokenUrl, {
+    const response = await fetch(tokenUrl, {
       method: "POST",
       headers,
       body,
@@ -186,6 +179,22 @@ class AthenaHealthAPI {
       throw new Error(
         `Token request failed (${mode}): ${response.status} - ${errorText}`
       );
+    }
+
+    return (await response.json()) as TokenResponse;
+  }
+
+  private async requestTokenViaProxy(): Promise<TokenResponse> {
+    const response = await fetch("/.netlify/functions/athena-token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Token request failed via proxy: ${response.status} - ${errorText}`);
     }
 
     return (await response.json()) as TokenResponse;
