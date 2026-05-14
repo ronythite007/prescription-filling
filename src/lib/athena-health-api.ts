@@ -206,14 +206,19 @@ class AthenaHealthAPI {
     medicationName: string
   ): Promise<MedicationSearchResult[]> {
     try {
-      const token = await this.getAccessToken();
-
       if (!practiceId) {
         throw new Error("Practice ID not provided");
       }
 
       const searchValue = getAthenaMedicationSearchValue(medicationName);
       console.log(`Searching medications for: ${searchValue}`);
+
+      if (import.meta.env.PROD) {
+        // Production calls go through Netlify to avoid CORS from the browser.
+        return this.searchMedicationsViaProxy(practiceId, searchValue, "searchvalue");
+      }
+
+      const token = await this.getAccessToken();
 
       // Athena preview requires `searchvalue` for this endpoint.
       return this.searchMedicationsWithParam(
@@ -286,6 +291,34 @@ class AthenaHealthAPI {
     }
 
     return results;
+  }
+
+  private async searchMedicationsViaProxy(
+    practiceId: string,
+    medicationName: string,
+    queryParamName: "name" | "searchvalue"
+  ): Promise<MedicationSearchResult[]> {
+    const response = await fetch("/.netlify/functions/athena-api", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "search",
+        practiceId,
+        medicationName,
+        queryParamName,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Medication search failed via proxy: ${response.status} - ${errorText}`);
+    }
+
+    const data = (await response.json()) as MedicationSearchResponse | unknown[];
+    return this.normalizeMedicationResults(data);
   }
 
   private normalizeMedicationResults(
@@ -410,11 +443,15 @@ class AthenaHealthAPI {
     payload: AddMedicationPayload
   ): Promise<AddMedicationResponse> {
     try {
-      const token = await this.getAccessToken();
-
       if (!practiceId) {
         throw new Error("Practice ID not provided");
       }
+
+      if (import.meta.env.PROD) {
+        return this.addMedicationToChartViaProxy(practiceId, patientId, payload);
+      }
+
+      const token = await this.getAccessToken();
 
       const url = new URL(
         `/v1/${practiceId}/chart/${patientId}/medications`,
@@ -500,6 +537,33 @@ class AthenaHealthAPI {
         error instanceof Error ? error.message : "Unknown error";
       throw new Error(`Failed to add medication to chart: ${message}`);
     }
+  }
+
+  private async addMedicationToChartViaProxy(
+    practiceId: string,
+    patientId: string,
+    payload: AddMedicationPayload
+  ): Promise<AddMedicationResponse> {
+    const response = await fetch("/.netlify/functions/athena-api", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "add",
+        practiceId,
+        patientId,
+        payload,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Add medication failed via proxy: ${response.status} - ${errorText}`);
+    }
+
+    return (await response.json()) as AddMedicationResponse;
   }
 
   /**
