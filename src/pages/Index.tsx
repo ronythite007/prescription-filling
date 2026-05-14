@@ -11,9 +11,12 @@ import { extractMedicationsFromTranscription, formatDateForAthena } from "@/lib/
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { smartGoBack } from "@/lib/return-navigation";
 
 type StepStatus = "pending" | "active" | "done" | "error";
+
+type SubmissionStatus = "success" | "failed";
 
 interface MedicationRequest {
   medicationName: string;
@@ -24,6 +27,25 @@ interface MedicationRequest {
     startdate: string;
     patientnote: string;
   };
+}
+
+interface SubmissionSummaryItem {
+  medicationName: string;
+  medicationId: number;
+  status: SubmissionStatus;
+  error?: string;
+}
+
+interface SubmissionSummary {
+  submittedAt: string;
+  practiceId: string;
+  patientId: string;
+  departmentId: string;
+  patientNote: string;
+  total: number;
+  successCount: number;
+  failureCount: number;
+  items: SubmissionSummaryItem[];
 }
 
 const Index = () => {
@@ -41,6 +63,7 @@ const Index = () => {
   const [selectedMedications, setSelectedMedications] = useState<Map<string, number>>(new Map());
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [submissionSummary, setSubmissionSummary] = useState<SubmissionSummary | null>(null);
 
   const resetState = () => {
     setTranscript(null);
@@ -50,6 +73,7 @@ const Index = () => {
     setShowConfirmModal(false);
     setIsPreparingRequests(false);
     setCurrentStep("pending");
+    setSubmissionSummary(null);
   };
 
   const handleTestConnection = async () => {
@@ -157,12 +181,14 @@ const Index = () => {
   const submitRequests = async (requestsToSubmit: MedicationRequest[] = preparedRequests) => {
     const trimmedPracticeId = practiceId.trim();
     const trimmedPatientId = patientId.trim();
+    const trimmedDepartmentId = departmentId.trim();
 
     setIsAddingToAthena(true);
 
     try {
       let successCount = 0;
       let failureCount = 0;
+      const summaryItems: SubmissionSummaryItem[] = [];
 
       // Submit each prepared request
       for (const request of requestsToSubmit) {
@@ -174,10 +200,21 @@ const Index = () => {
           );
 
           successCount++;
+          summaryItems.push({
+            medicationName: request.medicationName,
+            medicationId: request.medicationId,
+            status: "success",
+          });
           toast.success(`${request.medicationName} added to patient chart`);
         } catch (error) {
           failureCount++;
           const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          summaryItems.push({
+            medicationName: request.medicationName,
+            medicationId: request.medicationId,
+            status: "failed",
+            error: errorMsg,
+          });
           toast.error(`Failed to add ${request.medicationName}: ${errorMsg}`);
         }
       }
@@ -187,6 +224,18 @@ const Index = () => {
           `${successCount} medication(s) added to Athena Health successfully`
         );
       }
+
+      setSubmissionSummary({
+        submittedAt: new Date().toLocaleString(),
+        practiceId: trimmedPracticeId,
+        patientId: trimmedPatientId,
+        departmentId: trimmedDepartmentId,
+        patientNote: requestsToSubmit[0]?.payload.patientnote ?? "",
+        total: requestsToSubmit.length,
+        successCount,
+        failureCount,
+        items: summaryItems,
+      });
 
       setShowConfirmModal(false);
       setPreparedRequests([]);
@@ -203,9 +252,17 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <main className="container max-w-3xl mx-auto px-4 py-8 space-y-6">
         {/* Header Section */}
-        <div className="space-y-2 animate-fade-up text-center">
-          <h1 className="text-3xl font-bold tracking-tight">Voice-Based Prescription Refill</h1>
-          <p className="text-muted-foreground">Record or upload a prescription audio file, extract medications, and add them to Athena Health</p>
+        <div className="space-y-4 animate-fade-up text-center">
+          <div className="flex justify-start">
+            <Button variant="outline" onClick={smartGoBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Go Back
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Voice-Based Prescription Refill</h1>
+            <p className="text-muted-foreground">Record or upload a prescription audio file, extract medications, and add them to Athena Health</p>
+          </div>
         </div>
 
         {/* Input Section */}
@@ -258,7 +315,7 @@ const Index = () => {
             </div>
 
             {/* Test Athena Connection */}
-            <div className="pt-4 border-t space-y-3">
+            {/* <div className="pt-4 border-t space-y-3">
               <Button
                 onClick={handleTestConnection}
                 disabled={isTestingConnection}
@@ -278,7 +335,7 @@ const Index = () => {
                   {connectionStatus.message}
                 </div>
               )}
-            </div>
+            </div> */}
           </CardContent>
         </Card>
 
@@ -363,6 +420,89 @@ const Index = () => {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {submissionSummary && (
+            <Card className="animate-fade-up border-primary/20 bg-primary/5">
+              <CardHeader>
+                <CardTitle>Submitted Requests</CardTitle>
+                <CardDescription>
+                  This card shows exactly what was submitted to Athena Health and the outcome for each medication.
+                </CardDescription>
+                <div className="rounded-lg border bg-background/80 p-3 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Patient Note
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-foreground">
+                    {submissionSummary.patientNote || "No patient note was available for this submission."}
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg bg-background p-3 border">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Submitted</p>
+                    <p className="mt-1 text-sm font-medium">{submissionSummary.submittedAt}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 border">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Practice ID</p>
+                    <p className="mt-1 text-sm font-medium font-mono">{submissionSummary.practiceId}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 border">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patient ID</p>
+                    <p className="mt-1 text-sm font-medium font-mono">{submissionSummary.patientId}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 border">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Department ID</p>
+                    <p className="mt-1 text-sm font-medium font-mono">{submissionSummary.departmentId}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <span className="rounded-full bg-secondary px-3 py-1 font-medium">
+                    Total: {submissionSummary.total}
+                  </span>
+                  <span className="rounded-full bg-green-100 px-3 py-1 font-medium text-green-800 dark:bg-green-950 dark:text-green-200">
+                    Success: {submissionSummary.successCount}
+                  </span>
+                  <span className="rounded-full bg-red-100 px-3 py-1 font-medium text-red-800 dark:bg-red-950 dark:text-red-200">
+                    Failed: {submissionSummary.failureCount}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {submissionSummary.items.map((item) => (
+                    <div
+                      key={`${item.medicationId}-${item.medicationName}`}
+                      className={`flex items-start justify-between gap-4 rounded-lg border p-4 ${
+                        item.status === "success"
+                          ? "bg-green-50 dark:bg-green-950/40 dark:border-green-800"
+                          : "bg-red-50 dark:bg-red-950/40 dark:border-red-800"
+                      }`}
+                    >
+                      <div>
+                        <p className="font-medium">{item.medicationName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Medication ID: <span className="font-mono font-semibold text-foreground">{item.medicationId}</span>
+                        </p>
+                        {item.error && (
+                          <p className="mt-1 text-xs text-red-700 dark:text-red-300">{item.error}</p>
+                        )}
+                      </div>
+                      <div
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wider ${
+                          item.status === "success"
+                            ? "bg-green-600 text-white"
+                            : "bg-red-600 text-white"
+                        }`}
+                      >
+                        {item.status}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
