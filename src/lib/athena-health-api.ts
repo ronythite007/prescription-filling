@@ -42,6 +42,8 @@ interface AddMedicationResponse {
   success?: boolean;
   medicationid?: number;
   message?: string;
+  // Capture full response from Athena API
+  [key: string]: unknown;
 }
 
 function sanitizeMedicationSearchName(name: string): string {
@@ -521,6 +523,7 @@ class AthenaHealthAPI {
 
           const data2 = (await response2.json()) as AddMedicationResponse;
           console.log("Medication added successfully (form retry):", data2);
+          console.log("[Athena Debug] Full API response (form retry):", JSON.stringify(data2, null, 2));
           return data2;
         }
 
@@ -531,6 +534,7 @@ class AthenaHealthAPI {
 
       const data = (await response.json()) as AddMedicationResponse;
       console.log("Medication added successfully:", data);
+      console.log("[Athena Debug] Full API response:", JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
       const message =

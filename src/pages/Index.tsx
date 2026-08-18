@@ -11,7 +11,7 @@ import { extractMedicationsFromTranscription, formatDateForAthena } from "@/lib/
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { smartGoBack } from "@/lib/return-navigation";
 
 type StepStatus = "pending" | "active" | "done" | "error";
@@ -34,6 +34,7 @@ interface SubmissionSummaryItem {
   medicationId: number;
   status: SubmissionStatus;
   error?: string;
+  apiResponse?: unknown; // Full response from Athena API
 }
 
 interface SubmissionSummary {
@@ -64,6 +65,7 @@ const Index = () => {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [submissionSummary, setSubmissionSummary] = useState<SubmissionSummary | null>(null);
+  const [expandedResponses, setExpandedResponses] = useState<Set<string>>(new Set());
 
   const resetState = () => {
     setTranscript(null);
@@ -74,6 +76,22 @@ const Index = () => {
     setIsPreparingRequests(false);
     setCurrentStep("pending");
     setSubmissionSummary(null);
+    setExpandedResponses(new Set());
+  };
+
+  const toggleResponseExpanded = (key: string) => {
+    const newExpanded = new Set(expandedResponses);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedResponses(newExpanded);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Response copied to clipboard!");
   };
 
   const handleTestConnection = async () => {
@@ -193,7 +211,7 @@ const Index = () => {
       // Submit each prepared request
       for (const request of requestsToSubmit) {
         try {
-          await athenaHealthAPI.addMedicationToChart(
+          const apiResponse = await athenaHealthAPI.addMedicationToChart(
             trimmedPracticeId,
             trimmedPatientId,
             request.payload
@@ -204,6 +222,7 @@ const Index = () => {
             medicationName: request.medicationName,
             medicationId: request.medicationId,
             status: "success",
+            apiResponse, // Store full API response
           });
           toast.success(`${request.medicationName} added to patient chart`);
         } catch (error) {
@@ -473,35 +492,82 @@ const Index = () => {
                 </div>
 
                 <div className="space-y-2">
-                  {submissionSummary.items.map((item) => (
-                    <div
-                      key={`${item.medicationId}-${item.medicationName}`}
-                      className={`flex items-start justify-between gap-4 rounded-lg border p-4 ${
-                        item.status === "success"
-                          ? "bg-green-50 dark:bg-green-950/40 dark:border-green-800"
-                          : "bg-red-50 dark:bg-red-950/40 dark:border-red-800"
-                      }`}
-                    >
-                      <div>
-                        <p className="font-medium">{item.medicationName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Medication ID: <span className="font-mono font-semibold text-foreground">{item.medicationId}</span>
-                        </p>
-                        {item.error && (
-                          <p className="mt-1 text-xs text-red-700 dark:text-red-300">{item.error}</p>
-                        )}
-                      </div>
+                  {submissionSummary.items.map((item) => {
+                    const responseKey = `${item.medicationId}-${item.medicationName}`;
+                    const isExpanded = expandedResponses.has(responseKey);
+                    // Expand by default for successful submissions
+                    const shouldShowResponse = item.status === "success" ? true : isExpanded;
+                    return (
                       <div
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wider ${
+                        key={responseKey}
+                        className={`rounded-lg border p-4 ${
                           item.status === "success"
-                            ? "bg-green-600 text-white"
-                            : "bg-red-600 text-white"
+                            ? "bg-green-50 dark:bg-green-950/40 dark:border-green-800"
+                            : "bg-red-50 dark:bg-red-950/40 dark:border-red-800"
                         }`}
                       >
-                        {item.status}
+                        {/* Header with status */}
+                        <div className="flex items-start justify-between gap-4 mb-3">
+                          <div className="flex-1">
+                            <p className="font-medium">{item.medicationName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Medication ID: <span className="font-mono font-semibold text-foreground">{item.medicationId}</span>
+                            </p>
+                            {item.error && (
+                              <p className="mt-1 text-xs text-red-700 dark:text-red-300">{item.error}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${
+                                item.status === "success"
+                                  ? "bg-green-600 text-white"
+                                  : "bg-red-600 text-white"
+                              }`}
+                            >
+                              {item.status}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* API Response Section - Always Visible for Success */}
+                        {item.apiResponse && (
+                          <div className="mt-3 pt-3 border-t border-current border-opacity-20">
+                            <div className="flex items-center justify-between mb-2">
+                              <button
+                                onClick={() => toggleResponseExpanded(responseKey)}
+                                className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+                              >
+                                <span>📋 API Response from Athena Health</span>
+                                {shouldShowResponse ? (
+                                  <ChevronUp className="w-4 h-4 flex-shrink-0" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                                )}
+                              </button>
+                              {shouldShowResponse && (
+                                <button
+                                  onClick={() => copyToClipboard(JSON.stringify(item.apiResponse, null, 2))}
+                                  className="text-xs font-medium px-2 py-1 rounded bg-secondary hover:bg-secondary/80 transition-colors"
+                                  title="Copy to clipboard"
+                                >
+                                  Copy
+                                </button>
+                              )}
+                            </div>
+
+                            {shouldShowResponse && (
+                              <div className="mt-2 bg-background rounded border border-border p-3 text-xs font-mono overflow-x-auto max-h-60 overflow-y-auto shadow-sm">
+                                <pre className="whitespace-pre-wrap break-words text-foreground/90">
+{JSON.stringify(item.apiResponse, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
