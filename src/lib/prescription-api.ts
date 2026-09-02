@@ -33,23 +33,38 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+export async function transcribeAudio(audioBlob: Blob, filename?: string): Promise<string> {
   if (!ASSEMBLYAI_API_KEY) {
     throw new Error("AssemblyAI API key not configured");
   }
 
   try {
-    // Upload audio file to AssemblyAI
-    const uploadFormData = new FormData();
-    uploadFormData.append("file", audioBlob);
+    const mimeToExt: Record<string, string> = {
+      "audio/webm": ".webm",
+      "audio/webm;codecs=opus": ".webm",
+      "audio/ogg": ".ogg",
+      "audio/ogg;codecs=opus": ".ogg",
+      "audio/mp4": ".m4a",
+      "audio/mpeg": ".mp3",
+      "audio/wav": ".wav",
+      "audio/x-wav": ".wav",
+      "audio/wave": ".wav",
+    };
+    const rawType = (audioBlob.type || "").toLowerCase();
+    const extFromMime = mimeToExt[rawType] || (rawType.includes("webm") ? ".webm" : rawType.includes("mp4") ? ".m4a" : rawType.includes("ogg") ? ".ogg" : rawType.includes("wav") ? ".wav" : ".webm");
+    let resolvedFilename = filename?.trim() || (audioBlob instanceof File ? audioBlob.name : "") || `recording${extFromMime}`;
+    if (!/\.[a-z0-9]+$/i.test(resolvedFilename)) resolvedFilename += extFromMime;
+    const normalizedBlob = audioBlob.type ? audioBlob : new Blob([audioBlob], { type: "audio/webm" });
+    if (normalizedBlob.size === 0) throw new Error("Recorded audio is empty - try recording longer");
+    const fileToUpload = normalizedBlob;
 
-    console.log("Uploading audio to AssemblyAI...");
+    console.log(`Uploading audio to AssemblyAI... type=${fileToUpload.type} size=${fileToUpload.size} filename=${resolvedFilename}`);
     const uploadResponse = await fetch("https://api.assemblyai.com/v2/upload", {
       method: "POST",
       headers: {
         Authorization: ASSEMBLYAI_API_KEY,
       },
-      body: uploadFormData,
+      body: fileToUpload,
     });
 
     if (!uploadResponse.ok) {

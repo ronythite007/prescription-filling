@@ -109,7 +109,7 @@ const Index = () => {
     }
   };
 
-  const handleAudioReady = async (blob: Blob) => {
+  const handleAudioReady = async (blob: Blob, filename?: string) => {
     const trimmedPatientId = patientId.trim();
     const trimmedPracticeId = practiceId.trim();
     const trimmedDepartmentId = departmentId.trim();
@@ -128,8 +128,7 @@ const Index = () => {
     setCurrentStep("active");
 
     try {
-      // Transcribe audio
-      const text = await transcribeAudio(blob);
+      const text = await transcribeAudio(blob, filename);
       setTranscript(text);
 
       const { medicationNames } = await extractMedicationsFromTranscription(text);

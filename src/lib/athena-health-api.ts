@@ -46,6 +46,24 @@ interface AddMedicationResponse {
   [key: string]: unknown;
 }
 
+interface UpdateMedicationPayload {
+  departmentid: number;
+  hidden?: boolean;
+  patientnote?: string;
+  providernote?: string;
+  startdate?: string;
+  stopdate?: string;
+  stopreason?: string;
+  unstructuredsig?: string;
+}
+
+interface UpdateMedicationResponse {
+  success?: boolean;
+  errormessage?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
 function sanitizeMedicationSearchName(name: string): string {
   const cleaned = name
     .toLowerCase()

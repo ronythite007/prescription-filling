@@ -17,10 +17,24 @@ export function VoiceRecorder({ onAudioReady, isProcessing, isEnabled }: VoiceRe
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getSupportedMimeType = () => {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/ogg", "audio/wav"];
+    for (const t of candidates) if (MediaRecorder.isTypeSupported(t)) return t;
+    return "";
+  };
+
+  const extForMime = (mime: string) => {
+    if (mime.includes("mp4")) return ".m4a";
+    if (mime.includes("ogg")) return ".ogg";
+    if (mime.includes("wav")) return ".wav";
+    return ".webm";
+  };
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = getSupportedMimeType();
+      const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -29,8 +43,10 @@ export function VoiceRecorder({ onAudioReady, isProcessing, isEnabled }: VoiceRe
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        onAudioReady(blob, "recording.webm");
+        const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: actualType });
+        const filename = `recording${extForMime(actualType)}`;
+        onAudioReady(blob, filename);
         stream.getTracks().forEach((t) => t.stop());
       };
 
