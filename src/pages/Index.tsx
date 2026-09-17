@@ -13,6 +13,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { smartGoBack } from "@/lib/return-navigation";
+import {
+  getRecentInputValues,
+  rememberRecentInputValue,
+  type RecentInputField,
+} from "@/lib/recent-inputs";
 
 type StepStatus = "pending" | "active" | "done" | "error";
 
@@ -55,6 +60,10 @@ const Index = () => {
   const [patientId, setPatientId] = useState("");
   const [practiceId, setPracticeId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
+  const [recentPracticeIds, setRecentPracticeIds] = useState(() => getRecentInputValues("practiceId"));
+  const [recentPatientIds, setRecentPatientIds] = useState(() => getRecentInputValues("patientId"));
+  const [recentDepartmentIds, setRecentDepartmentIds] = useState(() => getRecentInputValues("departmentId"));
+  const [activeSuggestionField, setActiveSuggestionField] = useState<RecentInputField | null>(null);
   const [isAddingToAthena, setIsAddingToAthena] = useState(false);
   const [extractedMedications, setExtractedMedications] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState<StepStatus>("pending");
@@ -92,6 +101,58 @@ const Index = () => {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Response copied to clipboard!");
+  };
+
+  const rememberInput = (
+    field: "practiceId" | "patientId" | "departmentId",
+    value: string,
+  ) => {
+    const values = rememberRecentInputValue(field, value);
+
+    if (field === "practiceId") setRecentPracticeIds(values);
+    if (field === "patientId") setRecentPatientIds(values);
+    if (field === "departmentId") setRecentDepartmentIds(values);
+  };
+
+  const renderSuggestions = (
+    field: RecentInputField,
+    values: string[],
+    currentValue: string,
+    inputId: string,
+  ) => {
+    if (activeSuggestionField !== field) return null;
+
+    const matchingValues = values.filter((value) =>
+      value.toLowerCase().includes(currentValue.trim().toLowerCase()),
+    );
+
+    if (matchingValues.length === 0) return null;
+
+    return (
+      <div
+        id={`${inputId}-suggestions`}
+        className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+        role="listbox"
+      >
+        {matchingValues.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className="block w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (field === "practiceId") setPracticeId(value);
+              if (field === "patientId") setPatientId(value);
+              if (field === "departmentId") setDepartmentId(value);
+              setActiveSuggestionField(null);
+            }}
+            role="option"
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+    );
   };
 
   const handleTestConnection = async () => {
@@ -278,7 +339,7 @@ const Index = () => {
             </Button>
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Voice-Based Prescription Refill</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Voice-Based Medication Refill</h1>
             <p className="text-muted-foreground">Record or upload a prescription audio file, extract medications, and add them to Athena Health</p>
           </div>
         </div>
@@ -291,7 +352,7 @@ const Index = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Practice ID */}
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <Label htmlFor="practice-id" className="text-sm font-medium">
                 Practice ID
               </Label>
@@ -299,13 +360,22 @@ const Index = () => {
                 id="practice-id"
                 value={practiceId}
                 onChange={(e) => setPracticeId(e.target.value)}
+                onBlur={(e) => {
+                  rememberInput("practiceId", e.target.value);
+                  setActiveSuggestionField(null);
+                }}
+                onFocus={() => setActiveSuggestionField("practiceId")}
+                onKeyDown={(e) => e.key === "Escape" && setActiveSuggestionField(null)}
                 placeholder="e.g. 123456"
                 autoComplete="off"
+                aria-expanded={activeSuggestionField === "practiceId"}
+                aria-controls="practice-id-suggestions"
               />
+              {renderSuggestions("practiceId", recentPracticeIds, practiceId, "practice-id")}
             </div>
 
             {/* Patient ID */}
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <Label htmlFor="patient-id" className="text-sm font-medium">
                 Patient ID
               </Label>
@@ -313,13 +383,22 @@ const Index = () => {
                 id="patient-id"
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
+                onBlur={(e) => {
+                  rememberInput("patientId", e.target.value);
+                  setActiveSuggestionField(null);
+                }}
+                onFocus={() => setActiveSuggestionField("patientId")}
+                onKeyDown={(e) => e.key === "Escape" && setActiveSuggestionField(null)}
                 placeholder="e.g. P-10284"
                 autoComplete="off"
+                aria-expanded={activeSuggestionField === "patientId"}
+                aria-controls="patient-id-suggestions"
               />
+              {renderSuggestions("patientId", recentPatientIds, patientId, "patient-id")}
             </div>
 
             {/* Department ID */}
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <Label htmlFor="department-id" className="text-sm font-medium">
                 Department ID
               </Label>
@@ -327,9 +406,18 @@ const Index = () => {
                 id="department-id"
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
+                onBlur={(e) => {
+                  rememberInput("departmentId", e.target.value);
+                  setActiveSuggestionField(null);
+                }}
+                onFocus={() => setActiveSuggestionField("departmentId")}
+                onKeyDown={(e) => e.key === "Escape" && setActiveSuggestionField(null)}
                 placeholder="e.g. 82"
                 autoComplete="off"
+                aria-expanded={activeSuggestionField === "departmentId"}
+                aria-controls="department-id-suggestions"
               />
+              {renderSuggestions("departmentId", recentDepartmentIds, departmentId, "department-id")}
             </div>
 
             {/* Test Athena Connection */}
